@@ -128,6 +128,7 @@ export class World {
     this.camera.jump(this.player, stage.length);
     this.steady = true;   // the line is held for the player until they take it in hand
     this.spent = false;   // a kick spends the hold: a fresh press hitches the line again
+    this.wasHolding = true;
     this.notice = keepQuiet ? null : { text: `${index + 1}. ${stage.name}`, t: 3.2 };
     this.aimPoint = { x: this.player.x + 300, y: this.player.y - 140 };
     this.aimTarget = null;
@@ -241,14 +242,21 @@ export class World {
     }
     this.aimTarget = rope.find(this.masts, this.aimPoint, player);
 
-    const holding = input.latchHeld() || this.steady;
-    if (input.latchHeld()) this.steady = false;
+    const asked = input.latchHeld();
+    // The player's own hand on the line: a held button, E or shift. Until they use any control at
+    // all, the stage holds the line for them, so a new hand is never dropped straight into the
+    // swell; the first control they touch takes it over.
+    if (asked || input.steer() !== 0 || input.reel() !== 0 || input.releaseTapped()) this.steady = false;
+    const holding = asked || this.steady;
+    // A kick spends the hold: hitching again wants a fresh press, not the button still being down.
+    if (holding && !this.wasHolding) this.spent = false;
+    this.wasHolding = holding;
     if (rope.latched && input.releaseTapped()) {
       const shot = player.launch(rope);
       this.audio?.launch();
       this.camera.kick(0.35);
       this.spray(player.x, player.y, 10, shot);
-      this.spent = true;   // the kick spends the hold: let the button go to hitch again
+      this.spent = true;
     } else if (rope.latched && !holding) {
       rope.letGo();
       this.audio?.unlatch();
@@ -257,7 +265,6 @@ export class World {
       this.audio?.latch();
       this.spray(this.aimTarget.x, this.aimTarget.y, 6, { power: 120 });
     }
-    if (!input.latchHeld()) this.spent = false;
     rope.update(player, input, dt);
     player.step(dt, input, rope, this.stage.length);
 
